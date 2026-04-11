@@ -42,6 +42,7 @@ var int stateBars = 0
 var bool firstTouchSeen = false
 var int firstTouchBar = na
 var bool reactionWindowUsed = false
+var int fvgCreatedBar = na
 
 // STEP 1 — SWEEP
 if state == 0
@@ -58,6 +59,7 @@ if state == 1
         fvgTop := low
         fvgBottom := high[2]
         state := 2
+        fvgCreatedBar := bar_index
         firstTouchSeen := false
         firstTouchBar := na
         reactionWindowUsed := false
@@ -65,6 +67,7 @@ if state == 1
         fvgTop := low[2]
         fvgBottom := high
         state := 2
+        fvgCreatedBar := bar_index
         firstTouchSeen := false
         firstTouchBar := na
         reactionWindowUsed := false
@@ -72,24 +75,27 @@ if state == 1
 // STEP 3 — RETRACE ENTRY
 inBullFVG = state == 2 and isBull and not na(fvgTop) and low <= fvgTop and high >= fvgBottom
 inBearFVG = state == 2 and not isBull and not na(fvgTop) and high >= fvgBottom and low <= fvgTop
+firstValidTouch = state == 2 and not firstTouchSeen and bar_index > fvgCreatedBar and (inBullFVG or inBearFVG)
 
-if state == 2 and not firstTouchSeen and (inBullFVG or inBearFVG)
+if firstValidTouch
     firstTouchSeen := true
     firstTouchBar := bar_index
     reactionWindowUsed := false
 
-if state == 2 and firstTouchSeen and not reactionWindowUsed and bar_index > firstTouchBar + 1
-    reactionWindowUsed := true
+isReactionBar = state == 2 and firstTouchSeen and not reactionWindowUsed and bar_index == firstTouchBar + 1
 
-longEntry = state == 2 and isBull and firstTouchSeen and not reactionWindowUsed and bar_index == firstTouchBar + 1 and close > open and close > ema50
+longEntry = isReactionBar and isBull and close > open and close > ema50
 
-shortEntry = state == 2 and not isBull and firstTouchSeen and not reactionWindowUsed and bar_index == firstTouchBar + 1 and close < open and close < ema50
+shortEntry = isReactionBar and not isBull and close < open and close < ema50
+
+reactionFailed = isReactionBar and not longEntry and not shortEntry
 
 // RESET
-if longEntry or shortEntry
+if longEntry or shortEntry or reactionFailed
     state := 0
     fvgTop := na
     fvgBottom := na
+    fvgCreatedBar := na
     firstTouchSeen := false
     firstTouchBar := na
     reactionWindowUsed := false
@@ -103,6 +109,7 @@ if (state == 1 or state == 2) and stateBars >= 20
     state := 0
     fvgTop := na
     fvgBottom := na
+    fvgCreatedBar := na
     stateBars := 0
     firstTouchSeen := false
     firstTouchBar := na
