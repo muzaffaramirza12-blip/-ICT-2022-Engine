@@ -1,0 +1,75 @@
+//@version=5
+indicator("ICT 2022 Engine FINAL FIX", overlay=true)
+
+// =====================
+// EMA
+// =====================
+ema50 = ta.ema(close, 50)
+plot(ema50, color=color.blue)
+
+// =====================
+// DISPLACEMENT
+// =====================
+candleRange = high - low
+avgRange = ta.sma(candleRange, 10)
+
+bullDisplacement = close > open and candleRange > avgRange * 1.5
+bearDisplacement = close < open and candleRange > avgRange * 1.5
+
+// =====================
+// FVG
+// =====================
+bullFVG = low > high[2]
+bearFVG = high < low[2]
+
+// =====================
+// LIQUIDITY SWEEP
+// =====================
+swingHigh = ta.highest(high, 15)
+swingLow = ta.lowest(low, 15)
+
+bslSweep = high > swingHigh[1]
+sslSweep = low < swingLow[1]
+
+// =====================
+// STATE
+// =====================
+var int state = 0
+var float fvgTop = na
+var float fvgBottom = na
+var bool isBull = false
+
+// STEP 1 — SWEEP
+if state == 0
+    if sslSweep
+        state := 1
+        isBull := true
+    else if bslSweep
+        state := 1
+        isBull := false
+
+// STEP 2 — DISPLACEMENT + FVG
+if state == 1
+    if isBull and bullDisplacement and bullFVG
+        fvgTop := low
+        fvgBottom := high[2]
+        state := 2
+    else if not isBull and bearDisplacement and bearFVG
+        fvgTop := low[2]
+        fvgBottom := high
+        state := 2
+
+// STEP 3 — RETRACE ENTRY
+longEntry = state == 2 and isBull and not na(fvgTop) and close <= fvgTop and close >= fvgBottom and close > ema50
+
+shortEntry = state == 2 and not isBull and not na(fvgTop) and close >= fvgBottom and close <= fvgTop and close < ema50
+
+// RESET
+if longEntry or shortEntry
+    state := 0
+    fvgTop := na
+    fvgBottom := na
+
+// SIGNALS
+plotshape(longEntry, location=location.belowbar, color=color.green, style=shape.labelup, text="LONG")
+plotshape(shortEntry, location=location.abovebar, color=color.red, style=shape.labeldown, text="SHORT")
