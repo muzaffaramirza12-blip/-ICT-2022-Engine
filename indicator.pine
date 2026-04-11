@@ -39,6 +39,9 @@ var float fvgTop = na
 var float fvgBottom = na
 var bool isBull = false
 var int stateBars = 0
+var bool firstTouchSeen = false
+var int firstTouchBar = na
+var bool reactionWindowUsed = false
 
 // STEP 1 — SWEEP
 if state == 0
@@ -55,21 +58,41 @@ if state == 1
         fvgTop := low
         fvgBottom := high[2]
         state := 2
+        firstTouchSeen := false
+        firstTouchBar := na
+        reactionWindowUsed := false
     else if not isBull and bearDisplacement and bearFVG
         fvgTop := low[2]
         fvgBottom := high
         state := 2
+        firstTouchSeen := false
+        firstTouchBar := na
+        reactionWindowUsed := false
 
 // STEP 3 — RETRACE ENTRY
-longEntry = state == 2 and isBull and not na(fvgTop) and close <= fvgTop and close >= fvgBottom and close > ema50
+inBullFVG = state == 2 and isBull and not na(fvgTop) and low <= fvgTop and high >= fvgBottom
+inBearFVG = state == 2 and not isBull and not na(fvgTop) and high >= fvgBottom and low <= fvgTop
 
-shortEntry = state == 2 and not isBull and not na(fvgTop) and close >= fvgBottom and close <= fvgTop and close < ema50
+if state == 2 and not firstTouchSeen and (inBullFVG or inBearFVG)
+    firstTouchSeen := true
+    firstTouchBar := bar_index
+    reactionWindowUsed := false
+
+if state == 2 and firstTouchSeen and not reactionWindowUsed and bar_index > firstTouchBar + 1
+    reactionWindowUsed := true
+
+longEntry = state == 2 and isBull and firstTouchSeen and not reactionWindowUsed and bar_index == firstTouchBar + 1 and close > open and close > ema50
+
+shortEntry = state == 2 and not isBull and firstTouchSeen and not reactionWindowUsed and bar_index == firstTouchBar + 1 and close < open and close < ema50
 
 // RESET
 if longEntry or shortEntry
     state := 0
     fvgTop := na
     fvgBottom := na
+    firstTouchSeen := false
+    firstTouchBar := na
+    reactionWindowUsed := false
 
 if state == 1 or state == 2
     stateBars += 1
@@ -81,6 +104,9 @@ if (state == 1 or state == 2) and stateBars >= 20
     fvgTop := na
     fvgBottom := na
     stateBars := 0
+    firstTouchSeen := false
+    firstTouchBar := na
+    reactionWindowUsed := false
 
 // SIGNALS
 plotshape(longEntry, location=location.belowbar, color=color.green, style=shape.labelup, text="LONG")
