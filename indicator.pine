@@ -13,8 +13,8 @@ plot(ema50, color=color.blue)
 candleRange = high - low
 avgRange = ta.sma(candleRange, 10)
 
-bullDisplacement = close > open and candleRange > avgRange * 1.5
-bearDisplacement = close < open and candleRange > avgRange * 1.5
+bullDisplacement = close > open and candleRange > avgRange * 1.2
+bearDisplacement = close < open and candleRange > avgRange * 1.2
 
 // =====================
 // FVG
