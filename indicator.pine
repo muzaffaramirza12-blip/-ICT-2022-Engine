@@ -38,6 +38,7 @@ var int state = 0
 var float fvgTop = na
 var float fvgBottom = na
 var bool isBull = false
+var int stateBars = 0
 
 // STEP 1 — SWEEP
 if state == 0
@@ -69,6 +70,17 @@ if longEntry or shortEntry
     state := 0
     fvgTop := na
     fvgBottom := na
+
+if state == 1 or state == 2
+    stateBars += 1
+else
+    stateBars := 0
+
+if (state == 1 or state == 2) and stateBars >= 20
+    state := 0
+    fvgTop := na
+    fvgBottom := na
+    stateBars := 0
 
 // SIGNALS
 plotshape(longEntry, location=location.belowbar, color=color.green, style=shape.labelup, text="LONG")
