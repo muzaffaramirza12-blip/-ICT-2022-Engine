@@ -1,184 +1,30 @@
 //@version=5
-indicator("ICT 2022 Engine CLEAN SIGNAL", overlay=true, max_boxes_count=10, max_lines_count=10)
+indicator("Pivot BSL/SSL", overlay=true, max_lines_count=2)
 
-// =====================
-// SESSION (NY)
-// =====================
-inTradeSession = not na(time(timeframe.period, "0930-1200", "America/New_York"))
-nyDayTimestamp = time("D", "0000-2359", "America/New_York")
-newNyDay = ta.change(nyDayTimestamp) != 0
+leftBars = input.int(2, "Pivot Left Bars", minval=1)
+rightBars = input.int(2, "Pivot Right Bars", minval=1)
+lineLength = input.int(200, "Line Length (Bars)", minval=1)
 
-// =====================
-// INPUTS
-// =====================
-dispBodyLen = input.int(20, "Displacement Avg Body Length", minval=5)
-dispMultiplier = input.float(1.5, "Displacement Multiplier", minval=1.0, step=0.1)
+pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+pivotLow = ta.pivotlow(low, leftBars, rightBars)
 
-// =====================
-// STATE
-// =====================
 var float lastBSL = na
 var float lastSSL = na
-
+var int lastBSLBar = na
+var int lastSSLBar = na
 var line bslLine = na
 var line sslLine = na
 
-var bool longTraded = false
-var bool shortTraded = false
-
-var bool waitLongModel = false   // true only after SSL sweep
-var bool waitShortModel = false  // true only after BSL sweep
-
-var int fvgDirection = 0  // 1 = bull, -1 = bear, 0 = none
-var float fvgTop = na
-var float fvgBottom = na
-var box activeFvgBox = na
-
-if newNyDay
-    longTraded := false
-    shortTraded := false
-    waitLongModel := false
-    waitShortModel := false
-
-    fvgDirection := 0
-    fvgTop := na
-    fvgBottom := na
-
-    if not na(activeFvgBox)
-        box.delete(activeFvgBox)
-        activeFvgBox := na
-
-// =====================
-// STRONG SWINGS ONLY (NO MICRO TRACKING)
-// =====================
-pivotHigh = ta.pivothigh(high, 2, 2)
-pivotLow  = ta.pivotlow(low, 2, 2)
-
 if not na(pivotHigh)
     lastBSL := pivotHigh
-
+    lastBSLBar := bar_index - rightBars
     if not na(bslLine)
         line.delete(bslLine)
-
-    bslLine := line.new(
-        bar_index - 2,
-        lastBSL,
-        bar_index + 50,
-        lastBSL,
-        color=color.green,
-        width=2
-    )
+    bslLine := line.new(x1=lastBSLBar, y1=lastBSL, x2=lastBSLBar + lineLength, y2=lastBSL, xloc=xloc.bar_index, extend=extend.none, color=color.green, width=2)
 
 if not na(pivotLow)
     lastSSL := pivotLow
-
+    lastSSLBar := bar_index - rightBars
     if not na(sslLine)
         line.delete(sslLine)
-
-    sslLine := line.new(
-        bar_index - 2,
-        lastSSL,
-        bar_index + 50,
-        lastSSL,
-        color=color.red,
-        width=2
-    )
-
-// =====================
-// LIQUIDITY EVENTS (A)
-// =====================
-bslSweepNow = inTradeSession and not na(lastBSL) and high > lastBSL and high[1] <= lastBSL
-sslSweepNow = inTradeSession and not na(lastSSL) and low < lastSSL and low[1] >= lastSSL
-
-if bslSweepNow
-    waitShortModel := true
-    waitLongModel := false
-
-    fvgDirection := 0
-    fvgTop := na
-    fvgBottom := na
-    if not na(activeFvgBox)
-        box.delete(activeFvgBox)
-        activeFvgBox := na
-
-if sslSweepNow
-    waitLongModel := true
-    waitShortModel := false
-
-    fvgDirection := 0
-    fvgTop := na
-    fvgBottom := na
-    if not na(activeFvgBox)
-        box.delete(activeFvgBox)
-        activeFvgBox := na
-
-// =====================
-// DISPLACEMENT (B)
-// =====================
-body = math.abs(close - open)
-avgBody = ta.sma(body, dispBodyLen)
-strongBody = not na(avgBody) and body > avgBody * dispMultiplier
-bullDisplacement = close > open and strongBody
-bearDisplacement = close < open and strongBody
-
-// =====================
-// FVG CREATION (C) - ONLY AFTER SWEEP + DISPLACEMENT
-// =====================
-bullFVG = high[2] < low
-bearFVG = low[2] > high
-
-newBullFvg = inTradeSession and waitLongModel and bullDisplacement and bullFVG and not longTraded
-newBearFvg = inTradeSession and waitShortModel and bearDisplacement and bearFVG and not shortTraded
-
-if newBullFvg
-    fvgDirection := 1
-    fvgTop := low
-    fvgBottom := high[2]
-
-    if not na(activeFvgBox)
-        box.delete(activeFvgBox)
-    activeFvgBox := box.new(bar_index, fvgTop, bar_index + 1, fvgBottom, xloc=xloc.bar_index, extend=extend.right, bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 0))
-
-if newBearFvg
-    fvgDirection := -1
-    fvgTop := low[2]
-    fvgBottom := high
-
-    if not na(activeFvgBox)
-        box.delete(activeFvgBox)
-    activeFvgBox := box.new(bar_index, fvgTop, bar_index + 1, fvgBottom, xloc=xloc.bar_index, extend=extend.right, bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 0))
-
-// =====================
-// RETURN INTO FVG + ENTRY (D)
-// =====================
-activeFVG = inTradeSession and fvgDirection != 0 and not na(fvgTop) and not na(fvgBottom)
-inFvg = activeFVG and low <= fvgTop and high >= fvgBottom
-
-longEntry = inTradeSession and not longTraded and waitLongModel and activeFVG and fvgDirection == 1 and inFvg and close > open
-shortEntry = inTradeSession and not shortTraded and waitShortModel and activeFVG and fvgDirection == -1 and inFvg and close < open
-
-if longEntry
-    longTraded := true
-    waitLongModel := false
-
-if shortEntry
-    shortTraded := true
-    waitShortModel := false
-
-if longEntry or shortEntry
-    fvgDirection := 0
-    fvgTop := na
-    fvgBottom := na
-    if not na(activeFvgBox)
-        box.delete(activeFvgBox)
-        activeFvgBox := na
-
-if not inTradeSession and not na(activeFvgBox)
-    box.delete(activeFvgBox)
-    activeFvgBox := na
-    fvgDirection := 0
-    fvgTop := na
-    fvgBottom := na
-
-plotshape(longEntry, title="LONG ENTRY", location=location.belowbar, color=color.green, style=shape.arrowup, size=size.small, text="LONG")
-plotshape(shortEntry, title="SHORT ENTRY", location=location.abovebar, color=color.red, style=shape.arrowdown, size=size.small, text="SHORT")
+    sslLine := line.new(x1=lastSSLBar, y1=lastSSL, x2=lastSSLBar + lineLength, y2=lastSSL, xloc=xloc.bar_index, extend=extend.none, color=color.red, width=2)
