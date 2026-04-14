@@ -41,8 +41,24 @@ var bool isBull = false
 var int stateBars = 0
 var bool firstTouchSeen = false
 var int firstTouchBar = na
-var bool reactionWindowUsed = false
 var int fvgCreatedBar = na
+
+var int contState = 0
+var float contFvgTop = na
+var float contFvgBottom = na
+var bool contIsBull = false
+var int contStateBars = 0
+var bool contFirstTouchSeen = false
+var int contFirstTouchBar = na
+var int contFvgCreatedBar = na
+
+var bool bslTakenPreviously = false
+var bool sslTakenPreviously = false
+
+if bslSweep
+    bslTakenPreviously := true
+if sslSweep
+    sslTakenPreviously := true
 
 // STEP 1 — SWEEP
 if state == 0
@@ -62,7 +78,6 @@ if state == 1
         fvgCreatedBar := bar_index
         firstTouchSeen := false
         firstTouchBar := na
-        reactionWindowUsed := false
     else if not isBull and bearDisplacement and bearFVG
         fvgTop := low[2]
         fvgBottom := high
@@ -70,7 +85,6 @@ if state == 1
         fvgCreatedBar := bar_index
         firstTouchSeen := false
         firstTouchBar := na
-        reactionWindowUsed := false
 
 // STEP 3 — RETRACE ENTRY
 inBullFVG = state == 2 and isBull and not na(fvgTop) and low <= fvgTop and high >= fvgBottom
@@ -80,25 +94,67 @@ firstValidTouch = state == 2 and not firstTouchSeen and bar_index > fvgCreatedBa
 if firstValidTouch
     firstTouchSeen := true
     firstTouchBar := bar_index
-    reactionWindowUsed := false
+isReactionBar1 = state == 2 and firstTouchSeen and bar_index == firstTouchBar + 1
+isReactionBar2 = state == 2 and firstTouchSeen and bar_index == firstTouchBar + 2
+inReactionWindow = isReactionBar1 or isReactionBar2
 
-isReactionBar = state == 2 and firstTouchSeen and not reactionWindowUsed and bar_index == firstTouchBar + 1
+reversalLongEntry = inReactionWindow and isBull and close > open and close > ema50
+reversalShortEntry = inReactionWindow and not isBull and close < open and close < ema50
 
-longEntry = isReactionBar and isBull and close > open and close > ema50
+reversalReactionFailed = isReactionBar2 and not reversalLongEntry and not reversalShortEntry
 
-shortEntry = isReactionBar and not isBull and close < open and close < ema50
+// =====================
+// CONTINUATION ENTRY
+// =====================
+bullPullbackSeen = ta.barssince(close < open) <= 5
+bearPullbackSeen = ta.barssince(close > open) <= 5
 
-reactionFailed = isReactionBar and not longEntry and not shortEntry
+if contState == 0
+    if close > ema50 and bslTakenPreviously and bullPullbackSeen and bullDisplacement and bullFVG
+        contIsBull := true
+        contFvgTop := low
+        contFvgBottom := high[2]
+        contState := 1
+        contFvgCreatedBar := bar_index
+        contFirstTouchSeen := false
+        contFirstTouchBar := na
+    else if close < ema50 and sslTakenPreviously and bearPullbackSeen and bearDisplacement and bearFVG
+        contIsBull := false
+        contFvgTop := low[2]
+        contFvgBottom := high
+        contState := 1
+        contFvgCreatedBar := bar_index
+        contFirstTouchSeen := false
+        contFirstTouchBar := na
+
+contInBullFVG = contState == 1 and contIsBull and not na(contFvgTop) and low <= contFvgTop and high >= contFvgBottom
+contInBearFVG = contState == 1 and not contIsBull and not na(contFvgTop) and high >= contFvgBottom and low <= contFvgTop
+contFirstValidTouch = contState == 1 and not contFirstTouchSeen and bar_index > contFvgCreatedBar and (contInBullFVG or contInBearFVG)
+
+if contFirstValidTouch
+    contFirstTouchSeen := true
+    contFirstTouchBar := bar_index
+
+contReactionBar1 = contState == 1 and contFirstTouchSeen and bar_index == contFirstTouchBar + 1
+contReactionBar2 = contState == 1 and contFirstTouchSeen and bar_index == contFirstTouchBar + 2
+contInReactionWindow = contReactionBar1 or contReactionBar2
+
+continuationLongEntry = contInReactionWindow and contIsBull and close > open
+continuationShortEntry = contInReactionWindow and not contIsBull and close < open
+
+continuationReactionFailed = contReactionBar2 and not continuationLongEntry and not continuationShortEntry
+
+longEntry = reversalLongEntry or continuationLongEntry
+shortEntry = reversalShortEntry or continuationShortEntry
 
 // RESET
-if longEntry or shortEntry or reactionFailed
+if longEntry or shortEntry or reversalReactionFailed
     state := 0
     fvgTop := na
     fvgBottom := na
     fvgCreatedBar := na
     firstTouchSeen := false
     firstTouchBar := na
-    reactionWindowUsed := false
 
 if state == 1 or state == 2
     stateBars += 1
@@ -113,7 +169,28 @@ if (state == 1 or state == 2) and stateBars >= 20
     stateBars := 0
     firstTouchSeen := false
     firstTouchBar := na
-    reactionWindowUsed := false
+
+if longEntry or shortEntry or continuationReactionFailed
+    contState := 0
+    contFvgTop := na
+    contFvgBottom := na
+    contFvgCreatedBar := na
+    contFirstTouchSeen := false
+    contFirstTouchBar := na
+
+if contState == 1
+    contStateBars += 1
+else
+    contStateBars := 0
+
+if contState == 1 and contStateBars >= 20
+    contState := 0
+    contFvgTop := na
+    contFvgBottom := na
+    contFvgCreatedBar := na
+    contStateBars := 0
+    contFirstTouchSeen := false
+    contFirstTouchBar := na
 
 // SIGNALS
 plotshape(longEntry, location=location.belowbar, color=color.green, style=shape.labelup, text="LONG")
