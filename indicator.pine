@@ -1,35 +1,20 @@
 //@version=5
-indicator("Pivot BSL/SSL", overlay=true, max_lines_count=2)
+indicator("Pivot BSL SSL CLEAN ONLY", overlay=true, max_lines_count=2)
 
-leftBars = input.int(2, "Pivot Left Bars", minval=1)
-rightBars = input.int(2, "Pivot Right Bars", minval=1)
+pivotHigh = ta.pivothigh(high, 2, 2)
+pivotLow = ta.pivotlow(low, 2, 2)
 
-pivotHigh = ta.pivothigh(high, leftBars, rightBars)
-pivotLow = ta.pivotlow(low, leftBars, rightBars)
-
-var float lastBSL = na
-var float lastSSL = na
-var int lastBSLBar = na
-var int lastSSLBar = na
 var line bslLine = na
 var line sslLine = na
 
 if not na(pivotHigh)
-    lastBSL := pivotHigh
-    lastBSLBar := bar_index - rightBars
     if not na(bslLine)
         line.delete(bslLine)
-    bslLine := line.new(x1=lastBSLBar, y1=lastBSL, x2=bar_index, y2=lastBSL, xloc=xloc.bar_index, extend=extend.none, color=color.green, width=2)
+    pivotBarHigh = bar_index - 2
+    bslLine := line.new(x1=pivotBarHigh, y1=pivotHigh, x2=bar_index, y2=pivotHigh, xloc=xloc.bar_index, extend=extend.none, color=color.green, width=2)
 
 if not na(pivotLow)
-    lastSSL := pivotLow
-    lastSSLBar := bar_index - rightBars
     if not na(sslLine)
         line.delete(sslLine)
-    sslLine := line.new(x1=lastSSLBar, y1=lastSSL, x2=bar_index, y2=lastSSL, xloc=xloc.bar_index, extend=extend.none, color=color.red, width=2)
-
-if not na(bslLine) and not na(lastBSL)
-    line.set_xy2(bslLine, bar_index, lastBSL)
-
-if not na(sslLine) and not na(lastSSL)
-    line.set_xy2(sslLine, bar_index, lastSSL)
+    pivotBarLow = bar_index - 2
+    sslLine := line.new(x1=pivotBarLow, y1=pivotLow, x2=bar_index, y2=pivotLow, xloc=xloc.bar_index, extend=extend.none, color=color.red, width=2)
