@@ -8,8 +8,9 @@ inMrBuild = not na(time(timeframe.period, "0800-0929", "America/New_York"))
 inTradeSession = not na(time(timeframe.period, "0930-1200", "America/New_York"))
 after0930 = not na(time(timeframe.period, "0930-2359", "America/New_York"))
 
-nyDay = dayofyear(time, "America/New_York")
-newNyDay = ta.change(nyDay) != 0
+// Use NY-local daily timestamp changes to detect a new New York day in Pine v5.
+nyDayTimestamp = time("D", "0000-2359", "America/New_York")
+newNyDay = ta.change(nyDayTimestamp) != 0
 
 // =====================
 // DAILY STATE RESET
