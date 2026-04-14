@@ -1,5 +1,5 @@
 //@version=5
-indicator("ICT 2022 Engine CLEAN SIGNAL", overlay=true, max_boxes_count=10)
+indicator("ICT 2022 Engine CLEAN SIGNAL", overlay=true, max_boxes_count=10, max_lines_count=10)
 
 // =====================
 // SESSION (NY)
@@ -20,128 +20,137 @@ dispMultiplier = input.float(1.5, "Displacement Multiplier", minval=1.0, step=0.
 var float lastBSL = na
 var float lastSSL = na
 
-var bool firstBslTaken = false
-var bool firstSslTaken = false
+var line bslLine = na
+var line sslLine = na
 
 var bool longTraded = false
 var bool shortTraded = false
 
+var bool waitLongModel = false   // true only after SSL sweep
+var bool waitShortModel = false  // true only after BSL sweep
+
 var bool activeBullFvg = na
 var float fvgTop = na
 var float fvgBottom = na
-var int fvgBar = na
 var box activeFvgBox = na
 
 if newNyDay
-    firstBslTaken := false
-    firstSslTaken := false
     longTraded := false
     shortTraded := false
+    waitLongModel := false
+    waitShortModel := false
 
     activeBullFvg := na
     fvgTop := na
     fvgBottom := na
-    fvgBar := na
 
     if not na(activeFvgBox)
         box.delete(activeFvgBox)
         activeFvgBox := na
 
 // =====================
-// TRUE SWING POINTS (PIVOTS)
-// swing high = high > high[1], high[2], high[-1], high[-2]
-// swing low  = low  < low[1], low[2], low[-1], low[-2]
-// In Pine, ta.pivothigh/low with left=2/right=2 gives this behavior.
+// STRONG SWINGS ONLY (NO MICRO TRACKING)
 // =====================
 pivotHigh = ta.pivothigh(high, 2, 2)
 pivotLow = ta.pivotlow(low, 2, 2)
 
 if not na(pivotHigh)
     lastBSL := pivotHigh
+    if not na(bslLine)
+        line.delete(bslLine)
+    bslLine := line.new(bar_index - 2, lastBSL, bar_index, lastBSL, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.green, 0), width=2)
 
 if not na(pivotLow)
     lastSSL := pivotLow
+    if not na(sslLine)
+        line.delete(sslLine)
+    sslLine := line.new(bar_index - 2, lastSSL, bar_index, lastSSL, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.red, 0), width=2)
 
 // =====================
-// SWEEP LOGIC (FIRST REAL SWEEP ONLY)
+// LIQUIDITY EVENTS (A)
 // =====================
-bslSweepNow = inTradeSession and not firstBslTaken and not na(lastBSL) and high > lastBSL and high[1] <= lastBSL
-sslSweepNow = inTradeSession and not firstSslTaken and not na(lastSSL) and low < lastSSL and low[1] >= lastSSL
+bslSweepNow = inTradeSession and not na(lastBSL) and high > lastBSL and high[1] <= lastBSL
+sslSweepNow = inTradeSession and not na(lastSSL) and low < lastSSL and low[1] >= lastSSL
 
 if bslSweepNow
-    firstBslTaken := true
+    waitShortModel := true
+    waitLongModel := false
+
+    activeBullFvg := na
+    fvgTop := na
+    fvgBottom := na
+    if not na(activeFvgBox)
+        box.delete(activeFvgBox)
+        activeFvgBox := na
 
 if sslSweepNow
-    firstSslTaken := true
+    waitLongModel := true
+    waitShortModel := false
+
+    activeBullFvg := na
+    fvgTop := na
+    fvgBottom := na
+    if not na(activeFvgBox)
+        box.delete(activeFvgBox)
+        activeFvgBox := na
 
 // =====================
-// DISPLACEMENT (MANDATORY FILTER)
+// DISPLACEMENT (B)
 // =====================
 body = math.abs(close - open)
-avgBody = ta.sma(math.abs(close - open), dispBodyLen)
+avgBody = ta.sma(body, dispBodyLen)
 strongBody = not na(avgBody) and body > avgBody * dispMultiplier
-
 bullDisplacement = close > open and strongBody
 bearDisplacement = close < open and strongBody
 
 // =====================
-// FVG CREATION (ONLY AFTER DISPLACEMENT)
-// Bullish FVG: high[2] < low
-// Bearish FVG: low[2] > high
+// FVG CREATION (C) - ONLY AFTER SWEEP + DISPLACEMENT
 // =====================
 bullFVG = high[2] < low
 bearFVG = low[2] > high
 
-newBullFvg = inTradeSession and bullDisplacement and bullFVG and not longTraded
-newBearFvg = inTradeSession and bearDisplacement and bearFVG and not shortTraded
+newBullFvg = inTradeSession and waitLongModel and bullDisplacement and bullFVG and not longTraded
+newBearFvg = inTradeSession and waitShortModel and bearDisplacement and bearFVG and not shortTraded
 
 if newBullFvg
     activeBullFvg := true
     fvgTop := low
     fvgBottom := high[2]
-    fvgBar := bar_index
 
     if not na(activeFvgBox)
         box.delete(activeFvgBox)
-    activeFvgBox := box.new(bar_index, fvgTop, bar_index + 1, fvgBottom, xloc=xloc.bar_index, bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 0))
+    activeFvgBox := box.new(bar_index, fvgTop, bar_index + 1, fvgBottom, xloc=xloc.bar_index, extend=extend.right, bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 0))
 
-else if newBearFvg
+if newBearFvg
     activeBullFvg := false
     fvgTop := low[2]
     fvgBottom := high
-    fvgBar := bar_index
 
     if not na(activeFvgBox)
         box.delete(activeFvgBox)
-    activeFvgBox := box.new(bar_index, fvgTop, bar_index + 1, fvgBottom, xloc=xloc.bar_index, bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 0))
+    activeFvgBox := box.new(bar_index, fvgTop, bar_index + 1, fvgBottom, xloc=xloc.bar_index, extend=extend.right, bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 0))
 
+// =====================
+// RETURN INTO FVG + ENTRY (D)
+// =====================
 activeFVG = inTradeSession and not na(activeBullFvg) and not na(fvgTop) and not na(fvgBottom)
-
-if activeFVG and not na(activeFvgBox)
-    box.set_right(activeFvgBox, bar_index + 1)
-
-// =====================
-// ENTRY LOGIC (REAL ICT ONLY)
-// LONG: SSL taken -> bullish displacement + bullish FVG -> return into FVG -> bullish close
-// SHORT: BSL taken -> bearish displacement + bearish FVG -> return into FVG -> bearish close
-// =====================
 inFvg = activeFVG and low <= fvgTop and high >= fvgBottom
 
-longEntry = inTradeSession and not longTraded and activeFVG and activeBullFvg and firstSslTaken and inFvg and close > open
-shortEntry = inTradeSession and not shortTraded and activeFVG and not activeBullFvg and firstBslTaken and inFvg and close < open
+longEntry = inTradeSession and not longTraded and waitLongModel and activeFVG and activeBullFvg and inFvg and close > open
+shortEntry = inTradeSession and not shortTraded and waitShortModel and activeFVG and not activeBullFvg and inFvg and close < open
 
 if longEntry
     longTraded := true
+    waitLongModel := false
 
 if shortEntry
     shortTraded := true
+    waitShortModel := false
 
 if longEntry or shortEntry
     activeBullFvg := na
     fvgTop := na
     fvgBottom := na
-    fvgBar := na
-
     if not na(activeFvgBox)
         box.delete(activeFvgBox)
         activeFvgBox := na
@@ -152,13 +161,6 @@ if not inTradeSession and not na(activeFvgBox)
     activeBullFvg := na
     fvgTop := na
     fvgBottom := na
-    fvgBar := na
-
-// =====================
-// CLEAN VISUALS ONLY
-// =====================
-plot(lastBSL, "last BSL", color=color.new(color.green, 0), linewidth=2, style=plot.style_linebr)
-plot(lastSSL, "last SSL", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
 
 plotshape(longEntry, title="LONG ENTRY", location=location.belowbar, color=color.green, style=shape.arrowup, size=size.small, text="LONG")
 plotshape(shortEntry, title="SHORT ENTRY", location=location.abovebar, color=color.red, style=shape.arrowdown, size=size.small, text="SHORT")
