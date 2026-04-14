@@ -29,7 +29,7 @@ var bool shortTraded = false
 var bool waitLongModel = false   // true only after SSL sweep
 var bool waitShortModel = false  // true only after BSL sweep
 
-var bool activeBullFvg = na
+var int fvgDirection = 0  // 1 = bull, -1 = bear, 0 = none
 var float fvgTop = na
 var float fvgBottom = na
 var box activeFvgBox = na
@@ -40,7 +40,7 @@ if newNyDay
     waitLongModel := false
     waitShortModel := false
 
-    activeBullFvg := na
+    fvgDirection := 0
     fvgTop := na
     fvgBottom := na
 
@@ -76,7 +76,7 @@ if bslSweepNow
     waitShortModel := true
     waitLongModel := false
 
-    activeBullFvg := na
+    fvgDirection := 0
     fvgTop := na
     fvgBottom := na
     if not na(activeFvgBox)
@@ -87,7 +87,7 @@ if sslSweepNow
     waitLongModel := true
     waitShortModel := false
 
-    activeBullFvg := na
+    fvgDirection := 0
     fvgTop := na
     fvgBottom := na
     if not na(activeFvgBox)
@@ -113,7 +113,7 @@ newBullFvg = inTradeSession and waitLongModel and bullDisplacement and bullFVG a
 newBearFvg = inTradeSession and waitShortModel and bearDisplacement and bearFVG and not shortTraded
 
 if newBullFvg
-    activeBullFvg := true
+    fvgDirection := 1
     fvgTop := low
     fvgBottom := high[2]
 
@@ -122,7 +122,7 @@ if newBullFvg
     activeFvgBox := box.new(bar_index, fvgTop, bar_index + 1, fvgBottom, xloc=xloc.bar_index, extend=extend.right, bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 0))
 
 if newBearFvg
-    activeBullFvg := false
+    fvgDirection := -1
     fvgTop := low[2]
     fvgBottom := high
 
@@ -133,11 +133,11 @@ if newBearFvg
 // =====================
 // RETURN INTO FVG + ENTRY (D)
 // =====================
-activeFVG = inTradeSession and not na(activeBullFvg) and not na(fvgTop) and not na(fvgBottom)
+activeFVG = inTradeSession and fvgDirection != 0 and not na(fvgTop) and not na(fvgBottom)
 inFvg = activeFVG and low <= fvgTop and high >= fvgBottom
 
-longEntry = inTradeSession and not longTraded and waitLongModel and activeFVG and activeBullFvg and inFvg and close > open
-shortEntry = inTradeSession and not shortTraded and waitShortModel and activeFVG and not activeBullFvg and inFvg and close < open
+longEntry = inTradeSession and not longTraded and waitLongModel and activeFVG and fvgDirection == 1 and inFvg and close > open
+shortEntry = inTradeSession and not shortTraded and waitShortModel and activeFVG and fvgDirection == -1 and inFvg and close < open
 
 if longEntry
     longTraded := true
@@ -148,7 +148,7 @@ if shortEntry
     waitShortModel := false
 
 if longEntry or shortEntry
-    activeBullFvg := na
+    fvgDirection := 0
     fvgTop := na
     fvgBottom := na
     if not na(activeFvgBox)
@@ -158,7 +158,7 @@ if longEntry or shortEntry
 if not inTradeSession and not na(activeFvgBox)
     box.delete(activeFvgBox)
     activeFvgBox := na
-    activeBullFvg := na
+    fvgDirection := 0
     fvgTop := na
     fvgBottom := na
 
