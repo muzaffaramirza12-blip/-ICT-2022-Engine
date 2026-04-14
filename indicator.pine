@@ -1,22 +1,73 @@
 //@version=5
-indicator("ICT 2022 Engine FINAL FIX", overlay=true)
+indicator("ICT 2022 Engine CLEAN SIGNAL", overlay=true)
 
 // =====================
-// SESSION FILTER (NY 09:30–12:00)
+// TIME WINDOWS (NY)
 // =====================
-inNySession = not na(time(timeframe.period, "0930-1200", "America/New_York"))
+inMrBuild = not na(time(timeframe.period, "0800-0929", "America/New_York"))
+inTradeSession = not na(time(timeframe.period, "0930-1200", "America/New_York"))
+after0930 = not na(time(timeframe.period, "0930-2359", "America/New_York"))
+
+nyDay = dayofyear(time, "America/New_York")
+newNyDay = ta.change(nyDay) != 0
 
 // =====================
-// STRICT 3-CANDLE FVG
-// Bullish: high[2] < low[0]
-// Bearish: low[2] > high[0]
+// DAILY STATE RESET
+// =====================
+var float mrHigh = na
+var float mrLow = na
+
+var bool firstBslTaken = false
+var bool firstSslTaken = false
+
+var bool longTraded = false
+var bool shortTraded = false
+
+var bool activeBullFvg = na
+var float fvgTop = na
+var float fvgBottom = na
+var int fvgBar = na
+
+if newNyDay
+    mrHigh := na
+    mrLow := na
+    firstBslTaken := false
+    firstSslTaken := false
+    longTraded := false
+    shortTraded := false
+    activeBullFvg := na
+    fvgTop := na
+    fvgBottom := na
+    fvgBar := na
+
+// =====================
+// MORNING RANGE (MR)
+// =====================
+if inMrBuild
+    mrHigh := na(mrHigh) ? high : math.max(mrHigh, high)
+    mrLow := na(mrLow) ? low : math.min(mrLow, low)
+
+bslLevel = mrHigh
+sslLevel = mrLow
+
+// =====================
+// FIRST LIQUIDITY TAKES ONLY
+// =====================
+bslTakenNow = after0930 and not firstBslTaken and not na(bslLevel) and high > bslLevel
+sslTakenNow = after0930 and not firstSslTaken and not na(sslLevel) and low < sslLevel
+
+if bslTakenNow
+    firstBslTaken := true
+
+if sslTakenNow
+    firstSslTaken := true
+
+// =====================
+// STRICT FVG + DISPLACEMENT
 // =====================
 bullFVG = high[2] < low
 bearFVG = low[2] > high
 
-// =====================
-// DISPLACEMENT (middle candle [1] must be strong)
-// =====================
 body1 = math.abs(close[1] - open[1])
 body2 = math.abs(close[2] - open[2])
 body3 = math.abs(close[3] - open[3])
@@ -25,105 +76,64 @@ prevBodyMax = math.max(body2, body3)
 bullDisplacement = close[1] > open[1] and body1 > prevBodyMax * 1.2
 bearDisplacement = close[1] < open[1] and body1 > prevBodyMax * 1.2
 
+newBullCandidate = inTradeSession and firstBslTaken and not longTraded and bullFVG and bullDisplacement
+newBearCandidate = inTradeSession and firstSslTaken and not shortTraded and bearFVG and bearDisplacement
+
+// Keep ONLY the most recent valid FVG (replace older one)
+if newBullCandidate
+    activeBullFvg := true
+    fvgTop := low
+    fvgBottom := high[2]
+    fvgBar := bar_index
+else if newBearCandidate
+    activeBullFvg := false
+    fvgTop := low[2]
+    fvgBottom := high
+    fvgBar := bar_index
+
+activeFVG = inTradeSession and not na(fvgTop) and not na(fvgBottom) and not na(fvgBar) and not na(activeBullFvg)
+
 // =====================
-// LIQUIDITY SWEEP (required before setup)
-// Longs: BSL sweep first
-// Shorts: SSL sweep first
+// ENTRY LOCK: FIRST REACTION INSIDE SAME FVG
 // =====================
-swingHigh = ta.highest(high, 15)
-swingLow = ta.lowest(low, 15)
-
-bslSweep = high > swingHigh[1]
-sslSweep = low < swingLow[1]
-
-// =====================
-// STATE
-// 0 = waiting sweep
-// 1 = waiting displacement + FVG
-// 2 = waiting first return touch/entry
-// =====================
-var int state = 0
-var bool isBull = na
-var int sweepBar = na
-var float fvgTop = na
-var float fvgBottom = na
-var int fvgBar = na
-
-// Reset outside NY session to avoid late/old signals
-if not inNySession
-    state := 0
-    isBull := na
-    sweepBar := na
-    fvgTop := na
-    fvgBottom := na
-    fvgBar := na
-
-// STEP 1 — SWEEP (must happen first)
-if inNySession and state == 0
-    if bslSweep
-        state := 1
-        isBull := true
-        sweepBar := bar_index
-    else if sslSweep
-        state := 1
-        isBull := false
-        sweepBar := bar_index
-
-// STEP 2 — DISPLACEMENT + STRICT FVG after sweep
-if inNySession and state == 1 and not na(sweepBar) and bar_index > sweepBar
-    if isBull and bullFVG and bullDisplacement
-        fvgTop := low
-        fvgBottom := high[2]
-        fvgBar := bar_index
-        state := 2
-    else if not isBull and bearFVG and bearDisplacement
-        fvgTop := low[2]
-        fvgBottom := high
-        fvgBar := bar_index
-        state := 2
-
-// Timeout stale setups
-if inNySession and (state == 1 or state == 2) and not na(sweepBar) and bar_index - sweepBar > 25
-    state := 0
-    isBull := na
-    sweepBar := na
-    fvgTop := na
-    fvgBottom := na
-    fvgBar := na
-
-// STEP 3 — FIRST RETURN INTO SAME FVG ONLY
-activeFVG = inNySession and state == 2 and not na(fvgTop) and not na(fvgBottom) and not na(fvgBar)
-
-// Must be a return (not creation candle)
 returnedAfterCreation = activeFVG and bar_index > fvgBar
 insideFVG = returnedAfterCreation and low <= fvgTop and high >= fvgBottom
 
-// Entry must happen on first valid reaction candle, same candle, no delay
-longEntry = insideFVG and isBull and low <= fvgTop and close > open
-shortEntry = insideFVG and not isBull and high >= fvgBottom and close < open
+longEntry = insideFVG and activeBullFvg and close > open and not longTraded
+shortEntry = insideFVG and not activeBullFvg and close < open and not shortTraded
 
 firstTouchInvalid = insideFVG and not longEntry and not shortEntry
 
+if longEntry
+    longTraded := true
+if shortEntry
+    shortTraded := true
+
+// Hard block second touch + cleanup once first touch happens (valid or invalid)
 if longEntry or shortEntry or firstTouchInvalid
-    state := 0
-    isBull := na
-    sweepBar := na
+    activeBullFvg := na
+    fvgTop := na
+    fvgBottom := na
+    fvgBar := na
+
+// Also clear stale FVG when session ends
+if not inTradeSession
+    activeBullFvg := na
     fvgTop := na
     fvgBottom := na
     fvgBar := na
 
 // =====================
-// DEBUG VISUALS (MANDATORY)
+// CLEAN VISUALS ONLY
 // =====================
-plot(activeFVG ? fvgTop : na, "FVG Top", color=color.new(color.aqua, 0), linewidth=2, style=plot.style_linebr)
-plot(activeFVG ? fvgBottom : na, "FVG Bottom", color=color.new(color.blue, 0), linewidth=2, style=plot.style_linebr)
+plot(bslLevel, "BSL (MR High)", color=color.new(color.green, 0), linewidth=2, style=plot.style_linebr)
+plot(sslLevel, "SSL (MR Low)", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
 
-plotshape(inNySession and bslSweep, title="BSL Sweep", location=location.abovebar, style=shape.triangleup, color=color.new(color.green, 0), size=size.tiny, text="BSL")
-plotshape(inNySession and sslSweep, title="SSL Sweep", location=location.belowbar, style=shape.triangledown, color=color.new(color.red, 0), size=size.tiny, text="SSL")
-plotshape(insideFVG, title="Inside FVG", location=location.bottom, style=shape.circle, color=color.new(color.yellow, 0), size=size.tiny, text="IN")
+plot(activeFVG ? fvgTop : na, "Active FVG Top", color=color.new(color.aqua, 0), linewidth=2, style=plot.style_linebr)
+plot(activeFVG ? fvgBottom : na, "Active FVG Bottom", color=color.new(color.blue, 0), linewidth=2, style=plot.style_linebr)
 
-// =====================
-// SIGNALS (NO OFFSET / NO DELAY)
-// =====================
-plotshape(longEntry, title="LONG", location=location.belowbar, color=color.green, style=shape.labelup, text="LONG", offset=0)
-plotshape(shortEntry, title="SHORT", location=location.abovebar, color=color.red, style=shape.labeldown, text="SHORT", offset=0)
+plotshape(bslTakenNow, title="First BSL Taken", location=location.abovebar, style=shape.triangleup, color=color.new(color.green, 0), size=size.tiny, text="BSL")
+plotshape(sslTakenNow, title="First SSL Taken", location=location.belowbar, style=shape.triangledown, color=color.new(color.red, 0), size=size.tiny, text="SSL")
+
+plotshape(longEntry, title="LONG ENTRY", location=location.belowbar, color=color.green, style=shape.arrowup, size=size.small)
+plotshape(shortEntry, title="SHORT ENTRY", location=location.abovebar, color=color.red, style=shape.arrowdown, size=size.small)
