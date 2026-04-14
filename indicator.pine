@@ -2,22 +2,33 @@
 indicator("ICT 2022 Engine FINAL FIX", overlay=true)
 
 // =====================
-// DISPLACEMENT
+// SESSION FILTER (NY 09:30–12:00)
 // =====================
-candleRange = high - low
-avgRange = ta.sma(candleRange, 10)
-
-bullDisplacement = close > open and candleRange > avgRange * 1.2
-bearDisplacement = close < open and candleRange > avgRange * 1.2
+inNySession = not na(time(timeframe.period, "0930-1200", "America/New_York"))
 
 // =====================
-// FVG
+// STRICT 3-CANDLE FVG
+// Bullish: high[2] < low[0]
+// Bearish: low[2] > high[0]
 // =====================
-bullFVG = low > high[2]
-bearFVG = high < low[2]
+bullFVG = high[2] < low
+bearFVG = low[2] > high
 
 // =====================
-// LIQUIDITY SWEEP
+// DISPLACEMENT (middle candle [1] must be strong)
+// =====================
+body1 = math.abs(close[1] - open[1])
+body2 = math.abs(close[2] - open[2])
+body3 = math.abs(close[3] - open[3])
+prevBodyMax = math.max(body2, body3)
+
+bullDisplacement = close[1] > open[1] and body1 > prevBodyMax * 1.2
+bearDisplacement = close[1] < open[1] and body1 > prevBodyMax * 1.2
+
+// =====================
+// LIQUIDITY SWEEP (required before setup)
+// Longs: BSL sweep first
+// Shorts: SSL sweep first
 // =====================
 swingHigh = ta.highest(high, 15)
 swingLow = ta.lowest(low, 15)
@@ -27,78 +38,92 @@ sslSweep = low < swingLow[1]
 
 // =====================
 // STATE
+// 0 = waiting sweep
+// 1 = waiting displacement + FVG
+// 2 = waiting first return touch/entry
 // =====================
 var int state = 0
+var bool isBull = na
+var int sweepBar = na
 var float fvgTop = na
 var float fvgBottom = na
-var bool isBull = false
-var int stateBars = 0
-var bool firstTouchSeen = false
-var bool hasLeftFvg = false
+var int fvgBar = na
 
-// STEP 1 — SWEEP
-if state == 0
-    if sslSweep
+// Reset outside NY session to avoid late/old signals
+if not inNySession
+    state := 0
+    isBull := na
+    sweepBar := na
+    fvgTop := na
+    fvgBottom := na
+    fvgBar := na
+
+// STEP 1 — SWEEP (must happen first)
+if inNySession and state == 0
+    if bslSweep
         state := 1
         isBull := true
-    else if bslSweep
+        sweepBar := bar_index
+    else if sslSweep
         state := 1
         isBull := false
+        sweepBar := bar_index
 
-// STEP 2 — DISPLACEMENT + FVG
-if state == 1
-    if isBull and bullDisplacement and bullFVG
+// STEP 2 — DISPLACEMENT + STRICT FVG after sweep
+if inNySession and state == 1 and not na(sweepBar) and bar_index > sweepBar
+    if isBull and bullFVG and bullDisplacement
         fvgTop := low
         fvgBottom := high[2]
+        fvgBar := bar_index
         state := 2
-        firstTouchSeen := false
-        hasLeftFvg := false
-    else if not isBull and bearDisplacement and bearFVG
+    else if not isBull and bearFVG and bearDisplacement
         fvgTop := low[2]
         fvgBottom := high
+        fvgBar := bar_index
         state := 2
-        firstTouchSeen := false
-        hasLeftFvg := false
 
-// STEP 3 — STRICT FIRST RETURN ENTRY
-inBullFVG = state == 2 and isBull and not na(fvgTop) and low <= fvgTop and high >= fvgBottom
-inBearFVG = state == 2 and not isBull and not na(fvgTop) and high >= fvgBottom and low <= fvgTop
-inFVG = inBullFVG or inBearFVG
-
-if state == 2 and not hasLeftFvg
-    if (isBull and low > fvgTop) or (not isBull and high < fvgBottom)
-        hasLeftFvg := true
-
-firstReturnTouch = state == 2 and hasLeftFvg and not firstTouchSeen and inFVG
-
-longEntry = firstReturnTouch and isBull and close > open
-shortEntry = firstReturnTouch and not isBull and close < open
-reactionFailed = firstReturnTouch and not longEntry and not shortEntry
-
-if firstReturnTouch
-    firstTouchSeen := true
-
-// RESET
-if longEntry or shortEntry or reactionFailed
+// Timeout stale setups
+if inNySession and (state == 1 or state == 2) and not na(sweepBar) and bar_index - sweepBar > 25
     state := 0
+    isBull := na
+    sweepBar := na
     fvgTop := na
     fvgBottom := na
-    firstTouchSeen := false
-    hasLeftFvg := false
+    fvgBar := na
 
-if state == 1 or state == 2
-    stateBars += 1
-else
-    stateBars := 0
+// STEP 3 — FIRST RETURN INTO SAME FVG ONLY
+activeFVG = inNySession and state == 2 and not na(fvgTop) and not na(fvgBottom) and not na(fvgBar)
 
-if (state == 1 or state == 2) and stateBars >= 20
+// Must be a return (not creation candle)
+returnedAfterCreation = activeFVG and bar_index > fvgBar
+insideFVG = returnedAfterCreation and low <= fvgTop and high >= fvgBottom
+
+// Entry must happen on first valid reaction candle, same candle, no delay
+longEntry = insideFVG and isBull and low <= fvgTop and close > open
+shortEntry = insideFVG and not isBull and high >= fvgBottom and close < open
+
+firstTouchInvalid = insideFVG and not longEntry and not shortEntry
+
+if longEntry or shortEntry or firstTouchInvalid
     state := 0
+    isBull := na
+    sweepBar := na
     fvgTop := na
     fvgBottom := na
-    stateBars := 0
-    firstTouchSeen := false
-    hasLeftFvg := false
+    fvgBar := na
 
+// =====================
+// DEBUG VISUALS (MANDATORY)
+// =====================
+plot(activeFVG ? fvgTop : na, "FVG Top", color=color.new(color.aqua, 0), linewidth=2, style=plot.style_linebr)
+plot(activeFVG ? fvgBottom : na, "FVG Bottom", color=color.new(color.blue, 0), linewidth=2, style=plot.style_linebr)
+
+plotshape(inNySession and bslSweep, title="BSL Sweep", location=location.abovebar, style=shape.triangleup, color=color.new(color.green, 0), size=size.tiny, text="BSL")
+plotshape(inNySession and sslSweep, title="SSL Sweep", location=location.belowbar, style=shape.triangledown, color=color.new(color.red, 0), size=size.tiny, text="SSL")
+plotshape(insideFVG, title="Inside FVG", location=location.bottom, style=shape.circle, color=color.new(color.yellow, 0), size=size.tiny, text="IN")
+
+// =====================
 // SIGNALS (NO OFFSET / NO DELAY)
-plotshape(longEntry, location=location.belowbar, color=color.green, style=shape.labelup, text="LONG", offset=0)
-plotshape(shortEntry, location=location.abovebar, color=color.red, style=shape.labeldown, text="SHORT", offset=0)
+// =====================
+plotshape(longEntry, title="LONG", location=location.belowbar, color=color.green, style=shape.labelup, text="LONG", offset=0)
+plotshape(shortEntry, title="SHORT", location=location.abovebar, color=color.red, style=shape.labeldown, text="SHORT", offset=0)
