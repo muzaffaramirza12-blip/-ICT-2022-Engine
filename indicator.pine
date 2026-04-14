@@ -2,12 +2,6 @@
 indicator("ICT 2022 Engine FINAL FIX", overlay=true)
 
 // =====================
-// EMA
-// =====================
-ema50 = ta.ema(close, 50)
-plot(ema50, color=color.blue)
-
-// =====================
 // DISPLACEMENT
 // =====================
 candleRange = high - low
@@ -40,25 +34,7 @@ var float fvgBottom = na
 var bool isBull = false
 var int stateBars = 0
 var bool firstTouchSeen = false
-var int firstTouchBar = na
-var int fvgCreatedBar = na
-
-var int contState = 0
-var float contFvgTop = na
-var float contFvgBottom = na
-var bool contIsBull = false
-var int contStateBars = 0
-var bool contFirstTouchSeen = false
-var int contFirstTouchBar = na
-var int contFvgCreatedBar = na
-
-var bool bslTakenPreviously = false
-var bool sslTakenPreviously = false
-
-if bslSweep
-    bslTakenPreviously := true
-if sslSweep
-    sslTakenPreviously := true
+var bool hasLeftFvg = false
 
 // STEP 1 — SWEEP
 if state == 0
@@ -75,79 +51,40 @@ if state == 1
         fvgTop := low
         fvgBottom := high[2]
         state := 2
-        fvgCreatedBar := bar_index
         firstTouchSeen := false
-        firstTouchBar := na
+        hasLeftFvg := false
     else if not isBull and bearDisplacement and bearFVG
         fvgTop := low[2]
         fvgBottom := high
         state := 2
-        fvgCreatedBar := bar_index
         firstTouchSeen := false
-        firstTouchBar := na
+        hasLeftFvg := false
 
-// STEP 3 — RETRACE ENTRY
+// STEP 3 — STRICT FIRST RETURN ENTRY
 inBullFVG = state == 2 and isBull and not na(fvgTop) and low <= fvgTop and high >= fvgBottom
 inBearFVG = state == 2 and not isBull and not na(fvgTop) and high >= fvgBottom and low <= fvgTop
-firstReactionCheck = state == 2 and not firstTouchSeen and bar_index > fvgCreatedBar and (inBullFVG or inBearFVG)
+inFVG = inBullFVG or inBearFVG
 
-reversalLongEntry = firstReactionCheck and isBull and close > open
-reversalShortEntry = firstReactionCheck and not isBull and close < open
+if state == 2 and not hasLeftFvg
+    if (isBull and low > fvgTop) or (not isBull and high < fvgBottom)
+        hasLeftFvg := true
 
-reversalReactionFailed = firstReactionCheck and not reversalLongEntry and not reversalShortEntry
+firstReturnTouch = state == 2 and hasLeftFvg and not firstTouchSeen and inFVG
 
-if firstReactionCheck
+longEntry = firstReturnTouch and isBull and close > open
+shortEntry = firstReturnTouch and not isBull and close < open
+reactionFailed = firstReturnTouch and not longEntry and not shortEntry
+
+if firstReturnTouch
     firstTouchSeen := true
-    firstTouchBar := bar_index
-
-// =====================
-// CONTINUATION ENTRY
-// =====================
-bullPullbackSeen = ta.barssince(close < open) <= 5
-bearPullbackSeen = ta.barssince(close > open) <= 5
-
-if contState == 0
-    if close > ema50 and bslTakenPreviously and bullPullbackSeen and bullDisplacement and bullFVG
-        contIsBull := true
-        contFvgTop := low
-        contFvgBottom := high[2]
-        contState := 1
-        contFvgCreatedBar := bar_index
-        contFirstTouchSeen := false
-        contFirstTouchBar := na
-    else if close < ema50 and sslTakenPreviously and bearPullbackSeen and bearDisplacement and bearFVG
-        contIsBull := false
-        contFvgTop := low[2]
-        contFvgBottom := high
-        contState := 1
-        contFvgCreatedBar := bar_index
-        contFirstTouchSeen := false
-        contFirstTouchBar := na
-
-contInBullFVG = contState == 1 and contIsBull and not na(contFvgTop) and low <= contFvgTop and high >= contFvgBottom
-contInBearFVG = contState == 1 and not contIsBull and not na(contFvgTop) and high >= contFvgBottom and low <= contFvgTop
-contFirstReactionCheck = contState == 1 and not contFirstTouchSeen and bar_index > contFvgCreatedBar and (contInBullFVG or contInBearFVG)
-
-continuationLongEntry = contFirstReactionCheck and contIsBull and close > open
-continuationShortEntry = contFirstReactionCheck and not contIsBull and close < open
-
-continuationReactionFailed = contFirstReactionCheck and not continuationLongEntry and not continuationShortEntry
-
-if contFirstReactionCheck
-    contFirstTouchSeen := true
-    contFirstTouchBar := bar_index
-
-longEntry = reversalLongEntry or continuationLongEntry
-shortEntry = reversalShortEntry or continuationShortEntry
 
 // RESET
-if longEntry or shortEntry or reversalReactionFailed
+if longEntry or shortEntry or reactionFailed
     state := 0
     fvgTop := na
     fvgBottom := na
-    fvgCreatedBar := na
     firstTouchSeen := false
-    firstTouchBar := na
+    hasLeftFvg := false
 
 if state == 1 or state == 2
     stateBars += 1
@@ -158,33 +95,10 @@ if (state == 1 or state == 2) and stateBars >= 20
     state := 0
     fvgTop := na
     fvgBottom := na
-    fvgCreatedBar := na
     stateBars := 0
     firstTouchSeen := false
-    firstTouchBar := na
+    hasLeftFvg := false
 
-if longEntry or shortEntry or continuationReactionFailed
-    contState := 0
-    contFvgTop := na
-    contFvgBottom := na
-    contFvgCreatedBar := na
-    contFirstTouchSeen := false
-    contFirstTouchBar := na
-
-if contState == 1
-    contStateBars += 1
-else
-    contStateBars := 0
-
-if contState == 1 and contStateBars >= 20
-    contState := 0
-    contFvgTop := na
-    contFvgBottom := na
-    contFvgCreatedBar := na
-    contStateBars := 0
-    contFirstTouchSeen := false
-    contFirstTouchBar := na
-
-// SIGNALS
-plotshape(longEntry, location=location.belowbar, color=color.green, style=shape.labelup, text="LONG")
-plotshape(shortEntry, location=location.abovebar, color=color.red, style=shape.labeldown, text="SHORT")
+// SIGNALS (NO OFFSET / NO DELAY)
+plotshape(longEntry, location=location.belowbar, color=color.green, style=shape.labelup, text="LONG", offset=0)
+plotshape(shortEntry, location=location.abovebar, color=color.red, style=shape.labeldown, text="SHORT", offset=0)
