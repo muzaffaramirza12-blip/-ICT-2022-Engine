@@ -52,19 +52,37 @@ if newNyDay
 // STRONG SWINGS ONLY (NO MICRO TRACKING)
 // =====================
 pivotHigh = ta.pivothigh(high, 2, 2)
-pivotLow = ta.pivotlow(low, 2, 2)
+pivotLow  = ta.pivotlow(low, 2, 2)
 
 if not na(pivotHigh)
     lastBSL := pivotHigh
+
     if not na(bslLine)
         line.delete(bslLine)
-    bslLine := line.new(bar_index - 2, lastBSL, bar_index, lastBSL, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.green, 0), width=2)
+
+    bslLine := line.new(
+        bar_index - 2,
+        lastBSL,
+        bar_index + 50,
+        lastBSL,
+        color=color.green,
+        width=2
+    )
 
 if not na(pivotLow)
     lastSSL := pivotLow
+
     if not na(sslLine)
         line.delete(sslLine)
-    sslLine := line.new(bar_index - 2, lastSSL, bar_index, lastSSL, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.red, 0), width=2)
+
+    sslLine := line.new(
+        bar_index - 2,
+        lastSSL,
+        bar_index + 50,
+        lastSSL,
+        color=color.red,
+        width=2
+    )
 
 // =====================
 // LIQUIDITY EVENTS (A)
