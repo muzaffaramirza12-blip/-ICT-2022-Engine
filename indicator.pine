@@ -89,19 +89,16 @@ if state == 1
 // STEP 3 — RETRACE ENTRY
 inBullFVG = state == 2 and isBull and not na(fvgTop) and low <= fvgTop and high >= fvgBottom
 inBearFVG = state == 2 and not isBull and not na(fvgTop) and high >= fvgBottom and low <= fvgTop
-firstValidTouch = state == 2 and not firstTouchSeen and bar_index > fvgCreatedBar and (inBullFVG or inBearFVG)
+firstReactionCheck = state == 2 and not firstTouchSeen and bar_index > fvgCreatedBar and (inBullFVG or inBearFVG)
 
-if firstValidTouch
+reversalLongEntry = firstReactionCheck and isBull and close > open
+reversalShortEntry = firstReactionCheck and not isBull and close < open
+
+reversalReactionFailed = firstReactionCheck and not reversalLongEntry and not reversalShortEntry
+
+if firstReactionCheck
     firstTouchSeen := true
     firstTouchBar := bar_index
-isReactionBar1 = state == 2 and firstTouchSeen and bar_index == firstTouchBar + 1
-isReactionBar2 = state == 2 and firstTouchSeen and bar_index == firstTouchBar + 2
-inReactionWindow = isReactionBar1 or isReactionBar2
-
-reversalLongEntry = inReactionWindow and isBull and close > open and close > ema50
-reversalShortEntry = inReactionWindow and not isBull and close < open and close < ema50
-
-reversalReactionFailed = isReactionBar2 and not reversalLongEntry and not reversalShortEntry
 
 // =====================
 // CONTINUATION ENTRY
@@ -129,20 +126,16 @@ if contState == 0
 
 contInBullFVG = contState == 1 and contIsBull and not na(contFvgTop) and low <= contFvgTop and high >= contFvgBottom
 contInBearFVG = contState == 1 and not contIsBull and not na(contFvgTop) and high >= contFvgBottom and low <= contFvgTop
-contFirstValidTouch = contState == 1 and not contFirstTouchSeen and bar_index > contFvgCreatedBar and (contInBullFVG or contInBearFVG)
+contFirstReactionCheck = contState == 1 and not contFirstTouchSeen and bar_index > contFvgCreatedBar and (contInBullFVG or contInBearFVG)
 
-if contFirstValidTouch
+continuationLongEntry = contFirstReactionCheck and contIsBull and close > open
+continuationShortEntry = contFirstReactionCheck and not contIsBull and close < open
+
+continuationReactionFailed = contFirstReactionCheck and not continuationLongEntry and not continuationShortEntry
+
+if contFirstReactionCheck
     contFirstTouchSeen := true
     contFirstTouchBar := bar_index
-
-contReactionBar1 = contState == 1 and contFirstTouchSeen and bar_index == contFirstTouchBar + 1
-contReactionBar2 = contState == 1 and contFirstTouchSeen and bar_index == contFirstTouchBar + 2
-contInReactionWindow = contReactionBar1 or contReactionBar2
-
-continuationLongEntry = contInReactionWindow and contIsBull and close > open
-continuationShortEntry = contInReactionWindow and not contIsBull and close < open
-
-continuationReactionFailed = contReactionBar2 and not continuationLongEntry and not continuationShortEntry
 
 longEntry = reversalLongEntry or continuationLongEntry
 shortEntry = reversalShortEntry or continuationShortEntry
